@@ -1,6 +1,7 @@
 import requests
 from settings import *
 from bs4 import BeautifulSoup
+from urllib.parse import unquote, quote
 
 class ImotScraper:
 
@@ -8,10 +9,12 @@ class ImotScraper:
     Scrapes the list of URLs
     """
 
-    def __init__(self, main_url, imot_types, payload, headers, ads_url_2, encoding):
+    def __init__(self, main_url, imot_cities, imot_regions, imot_types, payload, headers, ads_url_2, encoding):
         """
 
         :param main_url:
+        :param imot_cities:
+        :param imot_regions:
         :param imot_types:
         :param payload:
         :param headers:
@@ -19,6 +22,8 @@ class ImotScraper:
         """
 
         self.main_url = main_url
+        self.imot_cities = imot_cities
+        self.imot_regions = imot_regions
         self.imot_types = imot_types
         self.payload = payload
         self.headers = headers
@@ -32,20 +37,26 @@ class ImotScraper:
         """
         Gets the short URL string for all imot types
         """
+        for city in self.imot_cities:
+            imot_city = quote(city, encoding=self.encoding)
 
-        for imot_type in self.imot_types:
-            payload = self.payload.format(imot_type)
-            headers = self.headers
+            for region in self.imot_regions:
+                imot_region = quote(region, encoding=self.encoding)
 
-            response = requests.request("POST",
-                                        self.main_url,
-                                        headers=headers,
-                                        data=payload.encode('utf-8'))
+                for imot_type in self.imot_types:
+                    payload = self.payload.format(imot_type, imot_city, imot_region)
+                    headers = self.headers
 
-            s = response.text.find("slink")
-            e = response.text.find("';", s)
-            slink = response.text[s + 6:e]
-            self.imot_slinks[imot_type] = slink
+                    response = requests.request("POST",
+                                                self.main_url,
+                                                headers=headers,
+                                                data=payload.encode('utf-8'))
+
+                    s = response.text.find("slink")
+                    e = response.text.find("';", s)
+                    slink = response.text[s+6:e]
+                    slink_key = ' '.join([str(imot_type), region, city])
+                    self.imot_slinks[slink_key] = slink
 
     def get_all_ads(self):
         """
@@ -100,7 +111,7 @@ class ImotScraper:
             self.all_ad_urls.extend(ads_urls)
 
 
-imot = ImotScraper(MAIN_URL, IMOT_TYPES, PAYLOAD, HEADERS, ADS_URL_2, ENCODING)
+imot = ImotScraper(MAIN_URL, IMOT_CITIES, IMOT_REGIONS, IMOT_TYPES, PAYLOAD, HEADERS, ADS_URL_2, ENCODING)
 imot.get_slinks()
 print(imot.imot_slinks)
 imot.get_all_ads()
