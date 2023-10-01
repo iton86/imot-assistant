@@ -3,9 +3,11 @@ ADS_URL_0 = 'https://www.imot.bg/pcgi/imot.cgi?act=3&slink={}&f1={}'
 ADS_URL_1 = 'https://imoti-sofia.imot.bg/pcgi/imot.cgi?'
 ADS_URL_2 = 'https://imot.bg/'
 ENCODING = 'windows-1251'
-IMOT_TYPES = [1, 2, 3, 8, 9]
+# IMOT_TYPES = [1, 2, 3, 8, 9]
+IMOT_TYPES = [1, 2]
 IMOT_CITIES = ['град София']
-IMOT_REGIONS = ['Център', 'Манастирски ливади']
+# IMOT_REGIONS = ['Център', 'Манастирски ливади']
+# IMOT_REGIONS = ['Център']
 PAYLOAD = "act=3&rub=1&rub_pub_save=1&topmenu=2&actions=1&f0=130.204.13.200&f1=1&f2=&f3=&f4=1&f7={}~&f28=&f29=&f43=&f44=&f30=EUR&f26=&f27=&f41=1&f31=&f32=&f54=&f38={}&f42=&f39=&f40={}&fe3=&fe4=&f45=&f46=&f51=&f52=&f33=&f34=&f35=&f36=&f37=&fe2=1&fe7=1"
 HEADERS = {
                 'Connection': 'keep-alive',
