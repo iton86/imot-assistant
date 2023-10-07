@@ -224,6 +224,9 @@ class ImotScraper:
         for ad_url in self.all_ad_urls:
             self.all_ads_details = pd.concat([self.all_ads_details, self.get_ad_info(ad_url)])
 
+            dictionary = {'\t': ''}  # Can be extended with more problematic chars
+            self.all_ads_details.replace(dictionary, regex=True, inplace=True)
+
         # self.all_ads_details['avg_price_per_kvm_of_sample'] = self.all_ads_details.groupby(
         #     ['ad_city',
         #      'ad_neighborhood',
@@ -241,6 +244,7 @@ class ImotScraper:
 
         # table_name_latest = 'ads_latest'
         # table_name_history = 'ads_history'
+
         with conn.cursor() as cur:
 
             cur.execute(
@@ -271,8 +275,8 @@ class ImotScraper:
                         ad_currency = CASE WHEN {table_name_latest}.ad_currency <> excluded.ad_currency THEN excluded.ad_currency ELSE {table_name_latest}.ad_currency END,
                         ad_kvm = CASE WHEN {table_name_latest}.ad_kvm <> excluded.ad_kvm THEN excluded.ad_kvm ELSE {table_name_latest}.ad_kvm END,
                         ad_price_per_kvm = CASE WHEN {table_name_latest}.ad_price_per_kvm <> excluded.ad_price_per_kvm THEN excluded.ad_price_per_kvm ELSE {table_name_latest}.ad_price_per_kvm END,
-                        ad_street = CASE WHEN {table_name_latest}.ad_street <> excluded.ad_street THEN excluded.ad_street ELSE {table_name_latest}.ad_street END
-                        -- updated_ts = CASE WHEN {table_name_latest}.updated_ts <> excluded.updated_ts THEN excluded.updated_ts ELSE {table_name_latest}.updated_ts END
+                        ad_street = CASE WHEN {table_name_latest}.ad_street <> excluded.ad_street THEN excluded.ad_street ELSE {table_name_latest}.ad_street END,
+                        updated_ts = CASE WHEN {table_name_latest}.updated_ts <> excluded.updated_ts THEN excluded.updated_ts ELSE {table_name_latest}.updated_ts END
                     
                 RETURNING *;
                 """
@@ -291,13 +295,13 @@ class ImotScraper:
             conn.commit()
         conn.close()
 
-
-imot = ImotScraper()
-imot.get_slinks()
-print(imot.imot_slinks)
-imot.get_all_ads()
-imot.get_all_ads_info()
-imot.write_to_db('ads_latest', 'ads_history')
+if __name__ == '__main__':
+    imot = ImotScraper()
+    imot.get_slinks()
+    print(imot.imot_slinks)
+    imot.get_all_ads()
+    imot.get_all_ads_info()
+    imot.write_to_db('ads_latest', 'ads_history')
 
 
 
