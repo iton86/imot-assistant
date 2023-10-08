@@ -2,18 +2,20 @@ from imot_scraper import ImotScraper
 from apscheduler.schedulers.background import BackgroundScheduler
 import time
 from datetime import datetime
-
+import os
 
 def etl_pipeline():
-    print("ETL has started")
-    imot = ImotScraper()
+    print("ETL has started\n")
+    # imot = ImotScraper()
     imot.get_slinks()
     print(imot.imot_slinks)
     imot.get_all_ads()
     imot.get_all_ads_info()
-    imot.write_to_db('ads_latest', 'ads_history')
-    print("ETL has finished")
+    imot.write_to_db('ads_latest', 'ads_history', True)
+    print(f"\nETL has finished. DB load: {imot.db_loads}")
 
+
+imot = ImotScraper()
 
 scheduler = BackgroundScheduler()
 job_id = 'imot_etl'
@@ -23,7 +25,6 @@ scheduler.start()
 
 
 job = scheduler.get_job(job_id)
-
 if job:
     if job.trigger is not None:
         print(f"The job with ID '{job_id}' is currently running.")

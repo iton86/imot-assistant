@@ -1,3 +1,4 @@
+import os
 import io
 import hashlib
 import requests
@@ -13,6 +14,9 @@ from urllib.parse import unquote, quote
 import settings as s
 importlib.reload(s)
 
+from dotenv import load_dotenv
+load_dotenv()
+
 
 class ImotScraper:
 
@@ -23,6 +27,11 @@ class ImotScraper:
     def __init__(self):
         """
         """
+        db_user = os.getenv('POSTGRES_USER')
+        db_pass = os.getenv('POSTGRES_PASSWORD')
+        db_host = os.getenv('POSTGRES_HOST_IMOT')
+        db_port = os.getenv('POSTGRES_PORT')
+        db_database = os.getenv('POSTGRES_DB')
 
         self.main_url = s.MAIN_URL
         self.imot_cities = s.IMOT_CITIES
@@ -32,17 +41,21 @@ class ImotScraper:
         self.headers = s.HEADERS
         self.encoding = s.ENCODING
         self.ads_url_2 = s.ADS_URL_2
-        self.pg_connection_string = s.PG_CONNECTION_STRING
 
         self.imot_slinks = {}
         self.all_ad_urls = []
         self.all_ads_details = pd.DataFrame()
 
+        self.pg_connection_string = f'postgresql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_database}'
+        self.db_loads = 0
 
     def get_slinks(self):
         """
         Gets the short URL string for all imot types
         """
+
+        self.imot_slinks = {}  # Re-initiate the dict, so every scheduled process get a clean one
+
         for city in self.imot_cities:
             imot_city = quote(city, encoding=self.encoding)
 
@@ -86,6 +99,8 @@ class ImotScraper:
         def get_slink_ads(slink):
             """
             """
+
+            self.all_ad_urls = []
 
             page_numbers = get_slink_pages(slink)
             ad_urls = []
@@ -221,6 +236,8 @@ class ImotScraper:
         """
         """
 
+        self.all_ads_details = pd.DataFrame()  # Re-initiate the df, so every scheduled run gets a fresh one
+
         for ad_url in self.all_ad_urls:
             self.all_ads_details = pd.concat([self.all_ads_details, self.get_ad_info(ad_url)])
 
@@ -236,7 +253,7 @@ class ImotScraper:
         #     self.all_ads_details['ad_price_per_kvm'] / self.all_ads_details['avg_price_per_kvm_of_sample'] - 1
         # self.all_ads_details['price_per_kvm_gain'] = round(self.all_ads_details['price_per_kvm_gain'] * 100, 2)
 
-    def write_to_db(self, table_name_latest, table_name_history):
+    def write_to_db(self, table_name_latest, table_name_history, drop=False):
 
         engine = create_engine(self.pg_connection_string)
         conn = engine.raw_connection()
@@ -246,6 +263,48 @@ class ImotScraper:
         # table_name_history = 'ads_history'
 
         with conn.cursor() as cur:
+
+            if drop and self.db_loads == 0:
+                cur.execute(f"""
+                DROP TABLE IF EXISTS {table_name_latest};
+                DROP TABLE IF EXISTS {table_name_history};
+                """)
+            conn.commit()
+
+            cur.execute(f"""
+                CREATE TABLE IF NOT EXISTS {table_name_latest} (
+                    ad_url VARCHAR(500),
+                    ad_city VARCHAR(500),
+                    ad_neighborhood VARCHAR(500),
+                    ad_type VARCHAR(10),
+                    ad_description VARCHAR(5000),
+                    ad_hash VARCHAR(100),
+                    ad_price INT,
+                    ad_currency VARCHAR(20),
+                    ad_kvm INT,
+                    ad_price_per_kvm DECIMAL(12, 2),
+                    ad_street VARCHAR(500),
+                    updated_ts TIMESTAMP,
+                    
+                    UNIQUE (ad_url));
+                    
+                CREATE TABLE IF NOT EXISTS {table_name_history} (
+                    ad_url VARCHAR(500),
+                    ad_city VARCHAR(500),
+                    ad_neighborhood VARCHAR(500),
+                    ad_type VARCHAR(10),
+                    ad_description VARCHAR(5000),
+                    ad_hash VARCHAR(100),
+                    ad_price INT,
+                    ad_currency VARCHAR(20),
+                    ad_kvm INT,
+                    ad_price_per_kvm DECIMAL(12, 2),
+                    ad_street VARCHAR(500),
+                    updated_ts TIMESTAMP,
+                    
+                    UNIQUE (ad_hash));
+                """)
+            conn.commit()
 
             cur.execute(
                 f"""
@@ -294,6 +353,8 @@ class ImotScraper:
             cur.execute(f"DROP TABLE tmp")
             conn.commit()
         conn.close()
+        self.db_loads += 1
+
 
 if __name__ == '__main__':
     imot = ImotScraper()
@@ -302,14 +363,6 @@ if __name__ == '__main__':
     imot.get_all_ads()
     imot.get_all_ads_info()
     imot.write_to_db('ads_latest', 'ads_history')
-
-
-
-
-
-
-
-
 
 
 
