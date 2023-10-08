@@ -1,0 +1,27 @@
+version: '3'
+services:
+  python-app:
+    build:
+      context: .
+    environment:
+      POSTGRES_HOST: ${POSTGRES_HOST_DOCKER}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    depends_on:
+      - postgresdb
+    ports:
+      - "5000:5000"  # Map the container's port (if needed)
+  postgresdb:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"  # Map the PostgreSQL container's port 5432 to your local machine's port
+
+volumes:
+  postgres_data:  # Define a named volume for PostgreSQL data
