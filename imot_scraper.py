@@ -11,11 +11,14 @@ from bs4 import BeautifulSoup
 from sqlalchemy import create_engine
 from urllib.parse import unquote, quote
 
-import settings as s
-importlib.reload(s)
-
 from dotenv import load_dotenv
 load_dotenv()
+
+from bgner.imot_ner import ImotNer
+from bgner import imot_config
+
+import settings as s
+importlib.reload(s)
 
 
 class ImotScraper:
@@ -27,9 +30,10 @@ class ImotScraper:
     def __init__(self):
         """
         """
+
         db_user = os.getenv('POSTGRES_USER')
         db_pass = os.getenv('POSTGRES_PASSWORD')
-        db_host = os.getenv('POSTGRES_HOST_IMOT')
+        db_host = os.getenv('POSTGRES_HOST_IMOT')  # For prod use IMOT
         db_port = os.getenv('POSTGRES_PORT')
         db_database = os.getenv('POSTGRES_DB')
 
@@ -49,12 +53,14 @@ class ImotScraper:
         self.pg_connection_string = f'postgresql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_database}'
         self.db_loads = 0
 
+        self.ner = ImotNer(mode='predict')
+
     def get_slinks(self):
         """
         Gets the short URL string for all imot types
         """
 
-        self.imot_slinks = {}  # Re-initiate the dict, so every scheduled process get a clean one
+        self.imot_slinks = {}  # Re-initiate the dict, so every scheduled process gets a clean one
 
         for city in self.imot_cities:
             imot_city = quote(city, encoding=self.encoding)
@@ -91,7 +97,7 @@ class ImotScraper:
             print(f'{self.ads_url_2}{slink}')
             main_url_req.encoding = self.encoding
             soup = BeautifulSoup(main_url_req.text, 'html.parser')
-            print(soup.status)
+            # print(soup.status)
             page_numbers = soup.find('span', {'class': 'pageNumbersInfo'}).text.split(' ')[-1]
             print(page_numbers)
             return int(page_numbers)
@@ -106,7 +112,7 @@ class ImotScraper:
             ad_urls = []
 
             for page in range(1, int(page_numbers) + 1):
-                print(page)
+                # print(page)
                 p = f'https://www.imot.bg/pcgi/imot.cgi?act=3&slink={slink}&f1={page}'
                 main_url_req = requests.get(p)
                 main_url_req.encoding = self.encoding
@@ -127,7 +133,7 @@ class ImotScraper:
             return ad_urls
 
         for _ in self.imot_slinks.values():
-            print(_)
+            # print(_)
             ads_urls = get_slink_ads(_)
             self.all_ad_urls.extend(ads_urls)
 
@@ -254,6 +260,20 @@ class ImotScraper:
         # self.all_ads_details['price_per_kvm_gain'] = round(self.all_ads_details['price_per_kvm_gain'] * 100, 2)
 
     def write_to_db(self, table_name_latest, table_name_history, drop=False):
+        """
+        The main idea is:
+        - Load unique hashes of the ads to DB
+        - Filter out only the hashes that are not existing in the history table
+        - Extract back the 'new' ad_ids
+        - Apply the NER model only to 'new' ads (We don't want to apply the NER more than once on the same ad)
+        - Load the 'new' ads back
+        - Truncate the latest table and recreate it as UNION of 'new' and 'old' ads from the history table
+
+        :param table_name_latest:
+        :param table_name_history:
+        :param drop:
+        :return:
+        """
 
         engine = create_engine(self.pg_connection_string)
         conn = engine.raw_connection()
@@ -269,6 +289,7 @@ class ImotScraper:
                 DROP TABLE IF EXISTS {table_name_latest};
                 DROP TABLE IF EXISTS {table_name_history};
                 """)
+                print('Tables have been dropped!')
             conn.commit()
 
             cur.execute(f"""
@@ -276,7 +297,7 @@ class ImotScraper:
                     ad_url VARCHAR(500),
                     ad_city VARCHAR(500),
                     ad_neighborhood VARCHAR(500),
-                    ad_type VARCHAR(10),
+                    ad_type VARCHAR(50),
                     ad_description VARCHAR(5000),
                     ad_hash VARCHAR(100),
                     ad_price INT,
@@ -285,6 +306,7 @@ class ImotScraper:
                     ad_price_per_kvm DECIMAL(12, 2),
                     ad_street VARCHAR(500),
                     updated_ts TIMESTAMP,
+                    locations VARCHAR(500),
                     
                     UNIQUE (ad_url));
                     
@@ -292,7 +314,7 @@ class ImotScraper:
                     ad_url VARCHAR(500),
                     ad_city VARCHAR(500),
                     ad_neighborhood VARCHAR(500),
-                    ad_type VARCHAR(10),
+                    ad_type VARCHAR(50),
                     ad_description VARCHAR(5000),
                     ad_hash VARCHAR(100),
                     ad_price INT,
@@ -301,10 +323,45 @@ class ImotScraper:
                     ad_price_per_kvm DECIMAL(12, 2),
                     ad_street VARCHAR(500),
                     updated_ts TIMESTAMP,
+                    locations VARCHAR(500),
                     
                     UNIQUE (ad_hash));
                 """)
             conn.commit()
+
+            cur.execute(
+                f"""
+                 CREATE TEMPORARY TABLE ads_latest_hashes (
+                    ad_url VARCHAR(500),
+                    ad_hash VARCHAR(100)
+                    );
+                """)
+
+            out_hashes = io.StringIO()
+            self.all_ads_details[['ad_url', 'ad_descr_hash']].to_csv(out_hashes, sep='\t', header=False, index=False)
+            out_hashes.seek(0)
+            cur.copy_from(out_hashes, 'ads_latest_hashes')
+            conn.commit()
+
+            keep_ads_sql = """
+            SELECT DISTINCT ad_url
+            FROM ads_latest_hashes
+            WHERE ad_hash NOT IN (SELECT DISTINCT ad_hash FROM ads_history) 
+            """
+
+            self.keep_ads = list(pd.read_sql(keep_ads_sql, conn)['ad_url'])
+            self.new_ads_details = self.all_ads_details.query("ad_url in @self.keep_ads")
+
+            # Put this in a ImotNer method
+            self.new_ads_details['locations'] = ''
+            res = []
+            r = self.new_ads_details.shape[0]
+            for i in range(r):
+                print(i)
+                s = self.new_ads_details.iloc[i]['ad_description']
+                res.append(self.ner.predict(s))
+
+            self.new_ads_details.loc[0:r, 'locations'] = res
 
             cur.execute(
                 f"""
@@ -313,38 +370,35 @@ class ImotScraper:
             )
 
             output = io.StringIO()
-            self.all_ads_details.to_csv(output, sep='\t', header=False, index=False)
-            # imot.all_ads_details.to_csv(output, sep='\t', header=False, index=False)
+            self.new_ads_details.to_csv(output, sep='\t', header=False, index=False)
             output.seek(0)
 
-
             cur.copy_from(output, 'tmp')
+
+            cur.execute(f"""
+            TRUNCATE {table_name_latest}
+            """)
 
             cur.execute(
                 f"""
                 INSERT INTO {table_name_latest}
                 SELECT * FROM tmp
-                ON CONFLICT (ad_url) DO UPDATE
-                    SET ad_city = CASE WHEN {table_name_latest}.ad_city <> excluded.ad_city THEN excluded.ad_city ELSE {table_name_latest}.ad_city END,
-                        ad_neighborhood = CASE WHEN {table_name_latest}.ad_neighborhood <> excluded.ad_neighborhood THEN excluded.ad_neighborhood ELSE {table_name_latest}.ad_neighborhood END,
-                        ad_type = CASE WHEN {table_name_latest}.ad_type <> excluded.ad_type THEN excluded.ad_type ELSE {table_name_latest}.ad_type END,
-                        ad_description = CASE WHEN {table_name_latest}.ad_description <> excluded.ad_description THEN excluded.ad_description ELSE {table_name_latest}.ad_description END,
-                        ad_hash = CASE WHEN {table_name_latest}.ad_hash <> excluded.ad_hash THEN excluded.ad_hash ELSE {table_name_latest}.ad_hash END,
-                        ad_price = CASE WHEN {table_name_latest}.ad_price <> excluded.ad_price THEN excluded.ad_price ELSE {table_name_latest}.ad_price END,
-                        ad_currency = CASE WHEN {table_name_latest}.ad_currency <> excluded.ad_currency THEN excluded.ad_currency ELSE {table_name_latest}.ad_currency END,
-                        ad_kvm = CASE WHEN {table_name_latest}.ad_kvm <> excluded.ad_kvm THEN excluded.ad_kvm ELSE {table_name_latest}.ad_kvm END,
-                        ad_price_per_kvm = CASE WHEN {table_name_latest}.ad_price_per_kvm <> excluded.ad_price_per_kvm THEN excluded.ad_price_per_kvm ELSE {table_name_latest}.ad_price_per_kvm END,
-                        ad_street = CASE WHEN {table_name_latest}.ad_street <> excluded.ad_street THEN excluded.ad_street ELSE {table_name_latest}.ad_street END,
-                        updated_ts = CASE WHEN {table_name_latest}.updated_ts <> excluded.updated_ts THEN excluded.updated_ts ELSE {table_name_latest}.updated_ts END
-                    
-                RETURNING *;
+                
+                UNION
+                
+                SELECT * 
+                FROM  ads_history 
+                WHERE 
+                    ad_hash IN (SELECT ad_hash FROM ads_latest_hashes)
+                    AND
+                    ad_hash NOT IN (SELECT ad_hash FROM tmp);
                 """
             )
 
             cur.execute(
                 f"""
                 INSERT INTO {table_name_history}
-                SELECT * FROM tmp
+                SELECT * FROM {table_name_latest}
                 ON CONFLICT (ad_hash) 
                 DO NOTHING
                 """
@@ -359,13 +413,7 @@ class ImotScraper:
 if __name__ == '__main__':
     imot = ImotScraper()
     imot.get_slinks()
-    print(imot.imot_slinks)
+    # print(imot.imot_slinks)
     imot.get_all_ads()
     imot.get_all_ads_info()
     imot.write_to_db('ads_latest', 'ads_history')
-
-
-
-
-
-
