@@ -1,0 +1,15 @@
+{
+    "train_timestamp": "2023-11-10 21:10:05",
+    "base_model": "bert-base-multilingual-cased",
+    "classes": "O, B-FAC, I-FAC",
+    "data_size": {
+        "train_set_size": 8996,
+        "val_set_size": 1118,
+        "test_set_size": 1090
+    },
+    "performance": {
+        "accuracy": 0.993,
+        "precision": "0.9977, 0.8805, 0.8983",
+        "recall": "0.996, 0.8636, 0.9591"
+    }
+}
