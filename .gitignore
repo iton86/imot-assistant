@@ -1,3 +1,4 @@
 /.env
 /bgner/data/*
 /bgner/model/*
+/bgner/model/imot_ner_model_2023-11-14/pytorch_model.bin
