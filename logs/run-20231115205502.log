@@ -1,0 +1,78 @@
+2023-11-15 20:55:02 [INFO]: ETL started
+2023-11-15 20:57:42 [INFO]: ETL started
+2023-11-15 20:57:42 [INFO]: Get slinks started
+2023-11-15 20:57:43 [INFO]: Get slinks completed
+2023-11-15 20:57:43 [INFO]: Get URLs started
+2023-11-15 20:57:49 [INFO]: Get URLs completed
+2023-11-15 20:57:49 [INFO]: Get ads content started
+2023-11-15 20:59:57 [INFO]: Get ads content completed
+2023-11-15 20:59:57 [INFO]: There are 400 ads
+2023-11-15 20:59:57 [INFO]: Load to DB started
+2023-11-15 20:59:57 [INFO]: Load in DB completed
+2023-11-15 21:00:41 [INFO]: ETL started
+2023-11-15 21:00:41 [INFO]: Get slinks started
+2023-11-15 21:00:42 [INFO]: Get slinks completed
+2023-11-15 21:00:42 [INFO]: Get URLs started
+2023-11-15 21:00:48 [INFO]: Get URLs completed
+2023-11-15 21:00:48 [INFO]: Get ads content started
+2023-11-15 21:03:01 [INFO]: Get ads content completed
+2023-11-15 21:03:01 [INFO]: There are 400 ads
+2023-11-15 21:03:01 [INFO]: Load to DB started
+2023-11-15 21:03:01 [INFO]: Load in DB completed
+2023-11-15 21:14:41 [INFO]: ETL started
+2023-11-15 21:14:41 [INFO]: Get slinks started
+2023-11-15 21:14:42 [INFO]: Get slinks completed
+2023-11-15 21:14:42 [INFO]: Get URLs started
+2023-11-15 21:14:48 [INFO]: Get URLs completed
+2023-11-15 21:14:48 [INFO]: Get ads content started
+2023-11-15 21:16:51 [INFO]: Get ads content completed
+2023-11-15 21:16:51 [INFO]: There are 400 ads
+2023-11-15 21:16:51 [INFO]: Load to DB started
+2023-11-15 21:16:52 [INFO]: Load in DB completed
+2023-11-15 22:24:29 [INFO]: ETL started
+2023-11-15 22:24:29 [INFO]: Get slinks started
+2023-11-15 22:24:30 [INFO]: Get slinks completed
+2023-11-15 22:24:30 [INFO]: Get URLs started
+2023-11-15 22:24:36 [INFO]: Get URLs completed
+2023-11-15 22:24:36 [INFO]: Get ads content started
+2023-11-15 22:24:36 [INFO]: all_ads_details has Series([], dtype: float64) rows
+2023-11-15 22:27:04 [INFO]: Get ads content completed
+2023-11-15 22:27:04 [INFO]: There are 400 ads
+2023-11-15 22:27:04 [INFO]: Load to DB started
+2023-11-15 22:27:04 [INFO]: Load in DB completed
+2023-11-15 22:27:39 [INFO]: Get slinks started
+2023-11-15 22:27:40 [INFO]: Get slinks completed
+2023-11-15 22:27:48 [INFO]: Get URLs started
+2023-11-15 22:27:54 [INFO]: Get URLs completed
+2023-11-15 22:31:09 [INFO]: ETL started
+2023-11-15 22:31:09 [INFO]: Get slinks started
+2023-11-15 22:31:10 [INFO]: Get slinks completed
+2023-11-15 22:31:10 [INFO]: Get URLs started
+2023-11-15 22:31:17 [INFO]: Get URLs completed
+2023-11-15 22:31:17 [INFO]: Get ads content started
+2023-11-15 22:31:17 [INFO]: all_ads_details has Series([], dtype: float64) rows
+2023-11-15 22:31:19 [INFO]: Get ads content completed
+2023-11-15 22:31:19 [INFO]: There are 7 ads
+2023-11-15 22:31:19 [INFO]: Load to DB started
+2023-11-15 22:31:19 [INFO]: Load in DB completed
+2023-11-15 22:33:32 [INFO]: ETL started
+2023-11-15 22:33:33 [INFO]: Get slinks started
+2023-11-15 22:33:34 [INFO]: Get slinks completed
+2023-11-15 22:33:34 [INFO]: Get URLs started
+2023-11-15 22:33:40 [INFO]: Get URLs completed
+2023-11-15 22:33:40 [INFO]: Get ads content started
+2023-11-15 22:33:40 [INFO]: all_ads_details has Series([], dtype: float64) rows
+2023-11-15 22:35:50 [INFO]: Get ads content completed
+2023-11-15 22:35:50 [INFO]: There are 400 ads
+2023-11-15 22:35:50 [INFO]: Load to DB started
+2023-11-15 22:35:51 [INFO]: Load in DB completed
+2023-11-15 22:36:40 [INFO]: Get slinks started
+2023-11-15 22:36:41 [INFO]: Get slinks completed
+2023-11-15 22:36:41 [INFO]: Get URLs started
+2023-11-15 22:36:46 [INFO]: Get URLs completed
+2023-11-15 22:36:46 [INFO]: Get ads content started
+2023-11-15 22:36:46 [INFO]: all_ads_details has Series([], dtype: float64) rows
+2023-11-15 22:38:39 [INFO]: Get ads content completed
+2023-11-15 22:38:39 [INFO]: There are 400 ads
+2023-11-15 22:38:39 [INFO]: Load to DB started
+2023-11-15 22:38:39 [INFO]: Load in DB completed

@@ -1,7 +1,7 @@
 # Model parameters
 
-MODEL_PATH = 'bgner/model/imot_ner_model_2023-11-10'
-TOKENIZER_PATH = 'bgner/model/imot_ner_tokenizer_2023-11-10'
+MODEL_PATH = 'bgner/model/imot_ner_model_2023-11-14'
+TOKENIZER_PATH = 'bgner/model/imot_ner_tokenizer_2023-11-14'
 # MODEL_PATH = 'bert-base-multilingual-cased'
 # TOKENIZER_PATH = 'bert-base-multilingual-cased'
 ENCODING = 'windows-1251'

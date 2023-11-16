@@ -1,25 +1,26 @@
 import os
 import io
 import hashlib
+import logging
 import requests
+import warnings
 import importlib
 import numpy as np
 import pandas as pd
+import settings as s
 import psycopg2 as pg
 from datetime import datetime
 from bs4 import BeautifulSoup
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from urllib.parse import unquote, quote
-
-from dotenv import load_dotenv
-load_dotenv()
 
 from bgner.imot_ner import ImotNer
 from bgner import imot_config
 
-import settings as s
+load_dotenv()
 importlib.reload(s)
-
+warnings.filterwarnings("ignore")
 
 class ImotScraper:
 
@@ -55,11 +56,20 @@ class ImotScraper:
 
         self.ner = ImotNer(mode='predict')
 
+        if not os.path.isdir('logs'):
+            os.mkdir('logs')
+
+        logging.basicConfig(filename=f"logs/run-{datetime.now().strftime('%Y%m%d%H%M%S')}.log", level=logging.INFO, format='%(asctime)s [%(levelname)s]: %(message)s',
+                            datefmt='%Y-%m-%d %H:%M:%S')
+
+        logging.info(f"ETL started")
+
     def get_slinks(self):
         """
         Gets the short URL string for all imot types
         """
 
+        logging.info("Get slinks started")
         self.imot_slinks = {}  # Re-initiate the dict, so every scheduled process gets a clean one
 
         for city in self.imot_cities:
@@ -82,12 +92,16 @@ class ImotScraper:
                     slink = response.text[s+6:e]
                     slink_key = ' '.join([str(imot_type), region, city])
                     self.imot_slinks[slink_key] = slink
+        logging.info("Get slinks completed")
 
     def get_all_ads(self):
         """
         Scrapes all URLs for the given types
         """
 
+        self.all_ad_urls = []
+
+        logging.info("Get URLs started")
         def get_slink_pages(slink):
             """
             Gets the max page number (pagination)
@@ -102,11 +116,9 @@ class ImotScraper:
             print(page_numbers)
             return int(page_numbers)
 
-        def get_slink_ads(slink):
+        def get_slink_ads(slink) -> list:
             """
             """
-
-            self.all_ad_urls = []
 
             page_numbers = get_slink_pages(slink)
             ad_urls = []
@@ -133,9 +145,12 @@ class ImotScraper:
             return ad_urls
 
         for _ in self.imot_slinks.values():
-            # print(_)
+            print(_)
             ads_urls = get_slink_ads(_)
+            print(f"{len(ads_urls)} URLs should be added to the URL list")
             self.all_ad_urls.extend(ads_urls)
+            print(f"URL list has {len(self.all_ad_urls)} URLs")
+        logging.info("Get URLs completed")
 
     def get_ad_info(self, ad_url):
         """
@@ -153,7 +168,7 @@ class ImotScraper:
 
             return hashed_data
 
-        print(ad_url)
+        # print(ad_url)
         ad_info = requests.get(ad_url)
         ad_info.encoding = self.encoding
         ad_soup = BeautifulSoup(ad_info.text, 'html.parser')
@@ -241,6 +256,7 @@ class ImotScraper:
     def get_all_ads_info(self):
         """
         """
+        logging.info("Get ads content started")
 
         self.all_ads_details = pd.DataFrame()  # Re-initiate the df, so every scheduled run gets a fresh one
 
@@ -249,6 +265,9 @@ class ImotScraper:
 
             dictionary = {'\t': ''}  # Can be extended with more problematic chars
             self.all_ads_details.replace(dictionary, regex=True, inplace=True)
+        logging.info("Get ads content completed")
+        logging.info(f"There are {self.all_ads_details.shape[0]} ads")
+        print('Scrapping all ads is done!')
 
         # self.all_ads_details['avg_price_per_kvm_of_sample'] = self.all_ads_details.groupby(
         #     ['ad_city',
@@ -274,13 +293,13 @@ class ImotScraper:
         :param drop:
         :return:
         """
-
+        logging.info("Load to DB started")
         engine = create_engine(self.pg_connection_string)
         conn = engine.raw_connection()
-        # cur = conn.cursor()
 
-        # table_name_latest = 'ads_latest'
-        # table_name_history = 'ads_history'
+        start_timestamp = datetime.now()
+        processed_records = self.all_ads_details.shape[0]
+        imot_types = ', '.join(self.all_ads_details['ad_type'].unique())
 
         with conn.cursor() as cur:
 
@@ -288,11 +307,19 @@ class ImotScraper:
                 cur.execute(f"""
                 DROP TABLE IF EXISTS {table_name_latest};
                 DROP TABLE IF EXISTS {table_name_history};
+                DROP TABLE IF EXISTS etl_tracker;
                 """)
                 print('Tables have been dropped!')
             conn.commit()
 
             cur.execute(f"""
+                CREATE TABLE IF NOT EXISTS etl_tracker (
+                    id SERIAL PRIMARY KEY,
+                    start_timestamp TIMESTAMP,
+                    end_timestamp TIMESTAMP,
+                    processed_records INTEGER,
+                    imot_types VARCHAR(500));
+            
                 CREATE TABLE IF NOT EXISTS {table_name_latest} (
                     ad_url VARCHAR(500),
                     ad_city VARCHAR(500),
@@ -337,6 +364,7 @@ class ImotScraper:
                     );
                 """)
 
+            print(f"Ads to process: {self.all_ads_details.shape[0]}")
             out_hashes = io.StringIO()
             self.all_ads_details[['ad_url', 'ad_descr_hash']].to_csv(out_hashes, sep='\t', header=False, index=False)
             out_hashes.seek(0)
@@ -351,6 +379,7 @@ class ImotScraper:
 
             self.keep_ads = list(pd.read_sql(keep_ads_sql, conn)['ad_url'])
             self.new_ads_details = self.all_ads_details.query("ad_url in @self.keep_ads")
+            logging.info(f"There are {self.new_ads_details.shape[0]} new ads")
 
             # Put this in a ImotNer method
             self.new_ads_details['locations'] = ''
@@ -406,9 +435,16 @@ class ImotScraper:
 
             cur.execute(f"DROP TABLE tmp")
             conn.commit()
+
+            end_timestamp = datetime.now()
+            etl_q = """INSERT INTO etl_tracker (start_timestamp, end_timestamp, processed_records, imot_types) 
+                       VALUES (%s, %s, %s, %s)"""
+            cur.execute(etl_q, (start_timestamp, end_timestamp, processed_records, imot_types))
+            conn.commit()
+
         conn.close()
         self.db_loads += 1
-
+        logging.info("Load in DB completed")
 
 if __name__ == '__main__':
     imot = ImotScraper()
@@ -416,4 +452,4 @@ if __name__ == '__main__':
     # print(imot.imot_slinks)
     imot.get_all_ads()
     imot.get_all_ads_info()
-    imot.write_to_db('ads_latest', 'ads_history')
+    imot.write_to_db('ads_latest', 'ads_history', drop=False)

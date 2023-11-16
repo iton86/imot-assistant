@@ -12,15 +12,15 @@ def etl_pipeline():
     imot.get_all_ads()
     imot.get_all_ads_info()
     imot.write_to_db(table_name_latest='ads_latest', table_name_history='ads_history', drop=True)
-    print(f"\nETL has finished on {datetime.now()}. DB load: {imot.db_loads}")
-
+    print(f"""\nETL has finished on {datetime.now()} |
+                DB load: {imot.db_loads} | Rows processed: {imot.all_ads_details.shape[0]}""")
 
 imot = ImotScraper()
 
 scheduler = BackgroundScheduler()
 job_id = 'imot_etl'
 
-scheduler.add_job(etl_pipeline, 'interval', minutes=5, id=job_id, next_run_time=datetime.now())
+scheduler.add_job(etl_pipeline, 'interval', minutes=10, id=job_id, next_run_time=datetime.now())
 scheduler.start()
 
 
