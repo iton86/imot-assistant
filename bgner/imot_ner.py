@@ -117,6 +117,16 @@ class ImotNer:
 
         return sentences
 
+    def remove_chars(self, input_string: str, chars_to_remove: str) -> str:
+        """
+        Removes residual charcters from a string - e.g. quotes
+        """
+
+        for char in chars_to_remove:
+            input_string = input_string.replace(char, '')
+
+        return input_string
+
     def combine_subtokens(self, tokens_with_labels) -> list:
         """
         Aggregates the tokenized sub-words into whole words and selects the label of the first token for the word
@@ -131,10 +141,12 @@ class ImotNer:
             else:
                 combined_text += " " + token
 
+        combined_text = self.remove_chars(combined_text, ["'", '"'])
+        combined_text = combined_text.strip()
         word_tokens = combined_text.split()
 
-        # Ugly way to get the tokens - it is even uglier as it is possible to get sub-token to be flagged as 1
-        # even if the first token of the word is marked as 0.
+        # Ugly way to get the tokens - it is even uglier as it is possible to get sub-token to be flagged as B-FAC
+        # even if the first token of the word is marked as O.
         word_labels = [_[1] for _ in tokens_with_labels if
                        _[0] == tokens_with_labels[0][0] or not _[0].startswith('##')]
 

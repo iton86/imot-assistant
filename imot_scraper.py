@@ -9,11 +9,11 @@ import numpy as np
 import pandas as pd
 import settings as s
 import psycopg2 as pg
-from datetime import datetime
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from urllib.parse import unquote, quote
+from datetime import datetime, timedelta
 
 from bgner.imot_ner import ImotNer
 from bgner import imot_config
@@ -34,7 +34,7 @@ class ImotScraper:
 
         db_user = os.getenv('POSTGRES_USER')
         db_pass = os.getenv('POSTGRES_PASSWORD')
-        db_host = os.getenv('POSTGRES_HOST_IMOT')  # For prod use IMOT
+        db_host = os.getenv('POSTGRES_HOST_IMOT')  # _DOCKER for local run, _IMOT for DOCKER-COMPOSE
         db_port = os.getenv('POSTGRES_PORT')
         db_database = os.getenv('POSTGRES_DB')
 
@@ -46,6 +46,11 @@ class ImotScraper:
         self.headers = s.HEADERS
         self.encoding = s.ENCODING
         self.ads_url_2 = s.ADS_URL_2
+
+        self.drop = s.DROP
+        self.table_name_latest = s.TABLE_NAME_LATEST
+        self.table_name_history = s.TABLE_NAME_HISTORY
+        self.optimized_scrape = s.OPTIMIZED_SCRAPE
 
         self.imot_slinks = {}
         self.all_ad_urls = []
@@ -59,10 +64,106 @@ class ImotScraper:
         if not os.path.isdir('logs'):
             os.mkdir('logs')
 
-        logging.basicConfig(filename=f"logs/run-{datetime.now().strftime('%Y%m%d%H%M%S')}.log", level=logging.INFO, format='%(asctime)s [%(levelname)s]: %(message)s',
+        logging.basicConfig(filename=f"logs/run-{datetime.now().strftime('%Y%m%d%H%M%S')}.log",
+                            level=logging.INFO,
+                            format='%(asctime)s [%(levelname)s]: %(message)s',
                             datefmt='%Y-%m-%d %H:%M:%S')
 
         logging.info(f"ETL started")
+
+    def drop_and_create_tables(self):
+        """
+
+        """
+
+        engine = create_engine(self.pg_connection_string)
+        conn = engine.raw_connection()
+
+        with conn.cursor() as cur:
+            if self.drop and self.db_loads == 0:
+                cur.execute(f"""
+                DROP TABLE IF EXISTS {self.table_name_latest};
+                DROP TABLE IF EXISTS {self.table_name_history};
+                DROP TABLE IF EXISTS etl_tracker;
+                """)
+
+                print('Tables have been dropped!')
+                logging.info("Tables have been dropped!")
+
+            conn.commit()
+
+            cur.execute(f"""
+                CREATE TABLE IF NOT EXISTS etl_tracker (
+                    id SERIAL PRIMARY KEY,
+                    start_timestamp TIMESTAMP,
+                    end_timestamp TIMESTAMP,
+                    processed_records INTEGER,
+                    newly_added_records INTEGER,
+                    imot_types VARCHAR(500));
+
+                CREATE TABLE IF NOT EXISTS {self.table_name_latest} (
+                    pic_url VARCHAR(500),
+                    ad_url VARCHAR(500),
+                    ad_city VARCHAR(500),
+                    ad_neighborhood VARCHAR(500),
+                    ad_type VARCHAR(50),
+                    ad_description VARCHAR(5000),
+                    ad_hash VARCHAR(100),
+                    ad_price INT,
+                    ad_currency VARCHAR(20),
+                    ad_kvm INT,
+                    ad_price_per_kvm DECIMAL(12, 2),
+                    ad_street VARCHAR(500),
+                    updated_ts TIMESTAMP,
+                    locations VARCHAR(5000),
+                    ad_show BOOL,
+
+                    UNIQUE (ad_url));
+
+                CREATE TABLE IF NOT EXISTS {self.table_name_history} (
+                    pic_url VARCHAR(500),
+                    ad_url VARCHAR(500),
+                    ad_city VARCHAR(500),
+                    ad_neighborhood VARCHAR(500),
+                    ad_type VARCHAR(50),
+                    ad_description VARCHAR(5000),
+                    ad_hash VARCHAR(100),
+                    ad_price INT,
+                    ad_currency VARCHAR(20),
+                    ad_kvm INT,
+                    ad_price_per_kvm DECIMAL(12, 2),
+                    ad_street VARCHAR(500),
+                    updated_ts TIMESTAMP,
+                    locations VARCHAR(5000),
+                    ad_show BOOL,
+
+                    UNIQUE (ad_hash));
+
+                CREATE OR REPLACE FUNCTION update_select_status_in_history()
+                RETURNS TRIGGER AS $$
+                BEGIN
+                    UPDATE ads_history
+                    SET ad_show = NEW.ad_show
+                    WHERE ads_history.ad_hash = NEW.ad_hash;
+
+                    RETURN NEW;
+                END;
+                $$ LANGUAGE plpgsql;
+
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_trigger WHERE tgname = 'trigger_update_history'
+                    ) THEN
+                        CREATE TRIGGER trigger_update_history
+                        AFTER UPDATE OF ad_show ON ads_latest
+                        FOR EACH ROW
+                        EXECUTE FUNCTION update_select_status_in_history();
+                    END IF;
+                END $$;
+                """)
+            conn.commit()
+            conn.close()
 
     def get_slinks(self):
         """
@@ -225,14 +326,21 @@ class ImotScraper:
             except:
                 ad_street = 'Missing'
 
+            # Get the pics
+            try:
+                pic_url = self.get_pics(soup=ad_soup, resolution='big', to_save=1)
+            except:
+                pic_url = 'https://www.imot.bg/images/picturess/nophoto_660x495.svg'
+
         except Exception as e:
-            print(e)
+            # print(e)
+            logging.error(e)
 
         str_to_hash = ad_url+ad_city+ad_neighborhood+ad_type+ad_description+str(ad_price)+\
                       ad_currency+str(ad_kvm)+str(ad_price_per_kvm)+ad_street
         try:
             ad_details = pd.DataFrame({
-                # 'pic_url': pic_url,
+                'pic_url': pic_url,
                 'ad_url': ad_url,
                 'ad_city': ad_city,
                 'ad_neighborhood': ad_neighborhood,
@@ -250,7 +358,8 @@ class ImotScraper:
             return ad_details
 
         except Exception as e:
-            print(e)
+            # print(e)
+            logging.error(e)
             pass
 
     def get_all_ads_info(self):
@@ -258,9 +367,36 @@ class ImotScraper:
         """
         logging.info("Get ads content started")
 
-        self.all_ads_details = pd.DataFrame()  # Re-initiate the df, so every scheduled run gets a fresh one
+        # Scrape new ads and ads that are haven't be scrapped in the last 24 hours - i.e. don't scrape everything
+        # all the time
+        if self.optimized_scrape:
+            engine = create_engine(self.pg_connection_string)
+            conn = engine.raw_connection()
+            with conn.cursor() as cur:
+                # If it is first time load the history table might not exist
+                try:
+                    q_exist_ads = f"""SELECT ad_url, MAX(updated_ts) AS updated_ts 
+                                      FROM {self.table_name_history} 
+                                      GROUP BY ad_url"""
+                    exist_ads = pd.read_sql(q_exist_ads, conn)
+                    exist_ads['needs_update'] = np.where(datetime.now() - exist_ads['updated_ts'] > timedelta(hours=24), 1, 0)
+                    self.exist_ads = list(exist_ads.query("needs_update == 0")['ad_url'])
+                except:
+                    self.exist_ads = []
+            conn.commit()
+        else:
+            self.exist_ads = []
 
-        for ad_url in self.all_ad_urls:
+        self.ad_urls_to_proc = [_ for _ in self.all_ad_urls if _ not in self.exist_ads]
+        logging.info(f"Adds to be scrapped: {len(self.ad_urls_to_proc)}")
+
+        # Re-initiate the df, so every scheduled run gets a fresh one
+        self.all_ads_details = pd.DataFrame(columns=['pic_url', 'ad_url', 'ad_city', 'ad_neighborhood', 'ad_type',
+                                                     'ad_description', 'ad_descr_hash', 'ad_price', 'ad_currency',
+                                                     'ad_kvm', 'ad_price_per_kvm', 'ad_street', 'updated_dt'])
+
+        # for ad_url in self.all_ad_urls:
+        for ad_url in self.ad_urls_to_proc:
             self.all_ads_details = pd.concat([self.all_ads_details, self.get_ad_info(ad_url)])
 
             dictionary = {'\t': ''}  # Can be extended with more problematic chars
@@ -278,7 +414,28 @@ class ImotScraper:
         #     self.all_ads_details['ad_price_per_kvm'] / self.all_ads_details['avg_price_per_kvm_of_sample'] - 1
         # self.all_ads_details['price_per_kvm_gain'] = round(self.all_ads_details['price_per_kvm_gain'] * 100, 2)
 
-    def write_to_db(self, table_name_latest, table_name_history, drop=False):
+    def get_pics(self, soup, resolution='med', to_save=0) -> list:
+        """
+        """
+
+        tag = [_.attrs['src'] for _ in soup.find_all("img") if 'photosimotbg' in _.attrs['src']]
+        urls = [_.replace("//", "https://") for _ in tag if 'med' in _]  # Taking only medium size pictures
+
+        if to_save == 0:
+            return urls[0]
+        else:
+            for url in urls:
+                f_name = url.split('/')[-1]
+                folder_name = f_name.split('_')[0]
+                if not os.path.isdir(f"jpgs/{folder_name}"):
+                    os.mkdir(f"jpgs/{folder_name}")
+                filename = f"jpgs/{folder_name}/{f_name}"
+                with open(filename, 'wb') as f:
+                    response = requests.get(url.replace('med', resolution))
+                    f.write(response.content)
+            return urls[0]
+
+    def write_to_db(self):
         """
         The main idea is:
         - Load unique hashes of the ads to DB
@@ -294,6 +451,7 @@ class ImotScraper:
         :return:
         """
         logging.info("Load to DB started")
+
         engine = create_engine(self.pg_connection_string)
         conn = engine.raw_connection()
 
@@ -303,65 +461,32 @@ class ImotScraper:
 
         with conn.cursor() as cur:
 
-            if drop and self.db_loads == 0:
-                cur.execute(f"""
-                DROP TABLE IF EXISTS {table_name_latest};
-                DROP TABLE IF EXISTS {table_name_history};
-                DROP TABLE IF EXISTS etl_tracker;
-                """)
-                print('Tables have been dropped!')
-            conn.commit()
+            if self.all_ads_details.shape[0] < 1:
 
-            cur.execute(f"""
-                CREATE TABLE IF NOT EXISTS etl_tracker (
-                    id SERIAL PRIMARY KEY,
-                    start_timestamp TIMESTAMP,
-                    end_timestamp TIMESTAMP,
-                    processed_records INTEGER,
-                    imot_types VARCHAR(500));
-            
-                CREATE TABLE IF NOT EXISTS {table_name_latest} (
-                    ad_url VARCHAR(500),
-                    ad_city VARCHAR(500),
-                    ad_neighborhood VARCHAR(500),
-                    ad_type VARCHAR(50),
-                    ad_description VARCHAR(5000),
-                    ad_hash VARCHAR(100),
-                    ad_price INT,
-                    ad_currency VARCHAR(20),
-                    ad_kvm INT,
-                    ad_price_per_kvm DECIMAL(12, 2),
-                    ad_street VARCHAR(500),
-                    updated_ts TIMESTAMP,
-                    locations VARCHAR(500),
-                    
-                    UNIQUE (ad_url));
-                    
-                CREATE TABLE IF NOT EXISTS {table_name_history} (
-                    ad_url VARCHAR(500),
-                    ad_city VARCHAR(500),
-                    ad_neighborhood VARCHAR(500),
-                    ad_type VARCHAR(50),
-                    ad_description VARCHAR(5000),
-                    ad_hash VARCHAR(100),
-                    ad_price INT,
-                    ad_currency VARCHAR(20),
-                    ad_kvm INT,
-                    ad_price_per_kvm DECIMAL(12, 2),
-                    ad_street VARCHAR(500),
-                    updated_ts TIMESTAMP,
-                    locations VARCHAR(500),
-                    
-                    UNIQUE (ad_hash));
+                logging.info("There are no new records to add")
+                logging.info("Load to DB completed")
+                logging.info("ETL completed")
+                print("ETL completed")
+                return None
+
+            cur.execute(
+                f"""
+                 CREATE TEMPORARY TABLE ads_latest_urls (
+                    ad_url VARCHAR(500));
                 """)
+
+            print(f"All latest ads: {len(self.all_ad_urls)}")
+            out_urls = io.StringIO()
+            pd.DataFrame({'ad_url': self.all_ad_urls}).to_csv(out_urls, sep='\t', header=False, index=False)
+            out_urls.seek(0)
+            cur.copy_from(out_urls, 'ads_latest_urls')
             conn.commit()
 
             cur.execute(
                 f"""
                  CREATE TEMPORARY TABLE ads_latest_hashes (
                     ad_url VARCHAR(500),
-                    ad_hash VARCHAR(100)
-                    );
+                    ad_hash VARCHAR(100));
                 """)
 
             print(f"Ads to process: {self.all_ads_details.shape[0]}")
@@ -374,15 +499,21 @@ class ImotScraper:
             keep_ads_sql = """
             SELECT DISTINCT ad_url
             FROM ads_latest_hashes
-            WHERE ad_hash NOT IN (SELECT DISTINCT ad_hash FROM ads_history) 
+            WHERE ad_hash NOT IN (SELECT DISTINCT ad_hash 
+                                  FROM ads_history 
+                                  WHERE updated_ts > CURRENT_TIMESTAMP - INTERVAL '24 hours') 
             """
 
             self.keep_ads = list(pd.read_sql(keep_ads_sql, conn)['ad_url'])
             self.new_ads_details = self.all_ads_details.query("ad_url in @self.keep_ads")
-            logging.info(f"There are {self.new_ads_details.shape[0]} new ads")
+
+            newly_added_records = self.new_ads_details.shape[0]
+            logging.info(f"There are {newly_added_records} new ads")
 
             # Put this in a ImotNer method
             self.new_ads_details['locations'] = ''
+            self.new_ads_details['ad_show'] = True
+
             res = []
             r = self.new_ads_details.shape[0]
             for i in range(r):
@@ -394,7 +525,7 @@ class ImotScraper:
 
             cur.execute(
                 f"""
-                CREATE TEMPORARY TABLE tmp (LIKE {table_name_history})
+                CREATE TEMPORARY TABLE tmp (LIKE {self.table_name_history})
                 """
             )
 
@@ -405,31 +536,53 @@ class ImotScraper:
             cur.copy_from(output, 'tmp')
 
             cur.execute(f"""
-            TRUNCATE {table_name_latest}
+            TRUNCATE {self.table_name_latest}
             """)
 
             cur.execute(
                 f"""
-                INSERT INTO {table_name_latest}
+                INSERT INTO {self.table_name_latest}
                 SELECT * FROM tmp
                 
                 UNION
                 
-                SELECT * 
-                FROM  ads_history 
+                SELECT
+                    a1.pic_url,
+                    a1.ad_url,
+                    a1.ad_city,
+                    a1.ad_neighborhood,
+                    a1.ad_type,
+                    a1.ad_description,
+                    a1.ad_hash,
+                    a1.ad_price,
+                    a1.ad_currency,
+                    a1.ad_kvm,
+                    a1.ad_price_per_kvm,
+                    a1.ad_street,
+                    a1.updated_ts,
+                    a1.locations,
+                    a1.ad_show
+                FROM (
+                      SELECT *, ROW_NUMBER() OVER(PARTITION BY ad_url ORDER BY updated_ts DESC) AS ord
+                      FROM ads_history
+                      ) a1
+                      INNER JOIN 
+                      ads_latest_urls b1
+                      ON
+                      a1.ad_url = b1.ad_url
                 WHERE 
-                    ad_hash IN (SELECT ad_hash FROM ads_latest_hashes)
+                    a1.ord = 1
                     AND
-                    ad_hash NOT IN (SELECT ad_hash FROM tmp);
+                    a1.ad_hash NOT IN (SELECT ad_hash FROM tmp);
                 """
             )
 
             cur.execute(
                 f"""
-                INSERT INTO {table_name_history}
-                SELECT * FROM {table_name_latest}
-                ON CONFLICT (ad_hash) 
-                DO NOTHING
+                INSERT INTO {self.table_name_history}
+                SELECT * FROM {self.table_name_latest}
+                ON CONFLICT (ad_hash) DO UPDATE
+                SET updated_ts = EXCLUDED.updated_ts;
                 """
             )
 
@@ -437,19 +590,23 @@ class ImotScraper:
             conn.commit()
 
             end_timestamp = datetime.now()
-            etl_q = """INSERT INTO etl_tracker (start_timestamp, end_timestamp, processed_records, imot_types) 
-                       VALUES (%s, %s, %s, %s)"""
-            cur.execute(etl_q, (start_timestamp, end_timestamp, processed_records, imot_types))
+            etl_q = """INSERT INTO etl_tracker (start_timestamp, end_timestamp, processed_records,
+                                                newly_added_records, imot_types) 
+                       VALUES (%s, %s, %s, %s, %s)"""
+            cur.execute(etl_q, (start_timestamp, end_timestamp, processed_records, newly_added_records, imot_types))
             conn.commit()
 
         conn.close()
         self.db_loads += 1
         logging.info("Load in DB completed")
+        logging.info(f"ETL completed")
+        print("ETL completed")
+
 
 if __name__ == '__main__':
     imot = ImotScraper()
+    imot.drop_and_create_tables()
     imot.get_slinks()
-    # print(imot.imot_slinks)
     imot.get_all_ads()
     imot.get_all_ads_info()
-    imot.write_to_db('ads_latest', 'ads_history', drop=False)
+    imot.write_to_db()

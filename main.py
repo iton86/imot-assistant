@@ -7,11 +7,11 @@ import os
 def etl_pipeline():
     print(f"ETL has started on {datetime.now()}\n")
     # imot = ImotScraper()
+    imot.drop_and_create_tables()
     imot.get_slinks()
-    # print(imot.imot_slinks)
     imot.get_all_ads()
     imot.get_all_ads_info()
-    imot.write_to_db(table_name_latest='ads_latest', table_name_history='ads_history', drop=True)
+    imot.write_to_db()
     print(f"""\nETL has finished on {datetime.now()} |
                 DB load: {imot.db_loads} | Rows processed: {imot.all_ads_details.shape[0]}""")
 
