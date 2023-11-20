@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dynamic Table</title>
+    <meta name="viewport" content="width=device-width, initial-scale=0.4">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+</head>
+<body>
+    <table id="data-table" border="1">
+        <!-- Table headers -->
+        <thead>
+            <tr>
+                <th>ad_url</th>
+                <th>ad_type</th>
+                <th>ad_price</th>
+                <th>locations</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <!-- Table body -->
+        <tbody></tbody>
+    </table>
+
+    <script>
+        function fetchData() {
+            $.ajax({
+                url: '/get_data',
+                method: 'GET',
+                success: function (data) {
+                    displayData(data);
+                }
+            });
+        }
+
+        function displayData(data) {
+    var tableBody = $('#data-table tbody');
+    tableBody.empty();
+
+    data.forEach(function (row) {
+        var tr = $('<tr>');
+        var url = row.ad_url;  // Extracting URL from the data
+        var alias = row.alias;  // Extracting Alias from the data
+        var pic = row.pic_url;
+
+        // var link = $('<a>').attr('href', url).attr('target', '_blank').text('click');
+        var link = $('<a>').attr('href', url).attr('target', '_blank').append($('<img>').attr('src', pic).attr('style', 'width: 100px; height: 100px; cursor: pointer;'));
+        var td1 = $('<td>').append(link);
+        var td2 = $('<td>').text(row.ad_type);
+        var td3 = $('<td>').text(row.ad_price);
+        var td4 = $('<td>').text(row.locations);
+
+        var removeBtn = $('<button>').addClass('remove-btn').attr('data-id', url).text('Remove');
+        var td5 = $('<td>').append(removeBtn);
+
+        tr.append(td1, td2, td3, td4, td5);
+        tableBody.append(tr);
+    });
+
+    // Check if the button already exists before creating it
+    if (!$('.expand-col-btn').length) {
+        var expandColBtn = $('<button>').text('Expand').addClass('expand-col-btn');
+        $('#data-table th:nth-child(4)').append(expandColBtn);
+
+        // Initially collapse the column width
+        $('#data-table th:nth-child(4), #data-table td:nth-child(4)').css('width', '100px');
+        expandColBtn.addClass('expanded').text('Collapse');
+
+        // Toggle column width on expand/collapse button click
+        $('.expand-col-btn').click(function() {
+            var isExpanded = $(this).hasClass('expanded');
+
+            if (isExpanded) {
+                $('#data-table th:nth-child(4), #data-table td:nth-child(4)').css('width', '100px');
+                $(this).removeClass('expanded').text('Expand');
+            } else {
+                $('#data-table th:nth-child(4), #data-table td:nth-child(4)').css('width', 'auto');
+                $(this).addClass('expanded').text('Collapse');
+            }
+        });
+    }
+}
+
+
+
+        $(document).ready(function () {
+            fetchData(); // Load data on page load
+
+            // Refresh data every 5 seconds
+            setInterval(fetchData, 5000);
+
+            // Handle remove button click
+            $('#data-table').on('click', '.remove-btn', function () {
+                var idToRemove = $(this).data('id');
+                $(this).closest('tr').remove(); // Remove row from UI immediately
+                $.ajax({
+                    url: '/update_data',
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ 'id': idToRemove }),
+                    success: function (response) {
+                        console.log(response.message);
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>
