@@ -31,3 +31,4 @@ TABLE_NAME_LATEST = 'ads_latest'
 TABLE_NAME_HISTORY = 'ads_history'
 DROP = True
 OPTIMIZED_SCRAPE = True
+CLEAR_FOLDERS = True

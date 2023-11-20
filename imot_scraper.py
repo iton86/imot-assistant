@@ -1,5 +1,6 @@
 import os
 import io
+import shutil
 import hashlib
 import logging
 import requests
@@ -51,6 +52,7 @@ class ImotScraper:
         self.table_name_latest = s.TABLE_NAME_LATEST
         self.table_name_history = s.TABLE_NAME_HISTORY
         self.optimized_scrape = s.OPTIMIZED_SCRAPE
+        self.clear_folders = s.CLEAR_FOLDERS
 
         self.imot_slinks = {}
         self.all_ad_urls = []
@@ -61,10 +63,17 @@ class ImotScraper:
 
         self.ner = ImotNer(mode='predict')
 
+        if self.clear_folders:
+            shutil.rmtree('logs')
+            shutil.rmtree('jpgs')
+
         if not os.path.isdir('logs'):
             os.mkdir('logs')
 
-        logging.basicConfig(filename=f"logs/run-{datetime.now().strftime('%Y%m%d%H%M%S')}.log",
+        if not os.path.isdir(f"jpgs"):
+            os.mkdir(f"jpgs")
+
+        logging.basicConfig(filename=f"logs/run-{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}.log",
                             level=logging.INFO,
                             format='%(asctime)s [%(levelname)s]: %(message)s',
                             datefmt='%Y-%m-%d %H:%M:%S')
