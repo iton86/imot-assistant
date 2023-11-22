@@ -35,7 +35,7 @@ class ImotScraper:
 
         db_user = os.getenv('POSTGRES_USER')
         db_pass = os.getenv('POSTGRES_PASSWORD')
-        db_host = os.getenv('POSTGRES_HOST_IMOT')  # _DOCKER for local run, _IMOT for DOCKER-COMPOSE
+        db_host = os.getenv('POSTGRES_HOST_DOCKER')  # _DOCKER for local run, _IMOT for DOCKER-COMPOSE
         db_port = os.getenv('POSTGRES_PORT')
         db_database = os.getenv('POSTGRES_DB')
 
@@ -345,9 +345,11 @@ class ImotScraper:
             # print(e)
             logging.error(e)
 
-        str_to_hash = ad_url+ad_city+ad_neighborhood+ad_type+ad_description+str(ad_price)+\
-                      ad_currency+str(ad_kvm)+str(ad_price_per_kvm)+ad_street
+
         try:
+            str_to_hash = ad_url + ad_city + ad_neighborhood + ad_type + ad_description + str(ad_price) + \
+                          ad_currency + str(ad_kvm) + str(ad_price_per_kvm) + ad_street
+
             ad_details = pd.DataFrame({
                 'pic_url': pic_url,
                 'ad_url': ad_url,
@@ -513,7 +515,8 @@ class ImotScraper:
                                   WHERE updated_ts > CURRENT_TIMESTAMP - INTERVAL '24 hours') 
             """
 
-            self.keep_ads = list(pd.read_sql(keep_ads_sql, conn)['ad_url'])
+            # No more than 150 ads to be updated at a run (responsible scrapping)
+            self.keep_ads = list(pd.read_sql(keep_ads_sql, conn)['ad_url'])[0:150]
             self.new_ads_details = self.all_ads_details.query("ad_url in @self.keep_ads")
 
             newly_added_records = self.new_ads_details.shape[0]
@@ -544,15 +547,40 @@ class ImotScraper:
 
             cur.copy_from(output, 'tmp')
 
-            cur.execute(f"""
-            TRUNCATE {self.table_name_latest}
-            """)
+            cur.execute(f"""                       
+                TRUNCATE {self.table_name_latest}
+                """)
 
             cur.execute(
                 f"""
                 INSERT INTO {self.table_name_latest}
-                SELECT * FROM tmp
-                
+                SELECT
+                    a1.pic_url,
+                    a1.ad_url,
+                    a1.ad_city,
+                    a1.ad_neighborhood,
+                    a1.ad_type,
+                    a1.ad_description,
+                    a1.ad_hash,
+                    a1.ad_price,
+                    a1.ad_currency,
+                    a1.ad_kvm,
+                    a1.ad_price_per_kvm,
+                    a1.ad_street,
+                    a1.updated_ts,
+                    a1.locations,
+                    COALESCE(b1.ad_show, TRUE) AS ad_show -- Don't want to loose the historical selections
+                FROM 
+                    tmp a1
+                    LEFT JOIN               
+                    (SELECT * FROM (
+                         SELECT *, ROW_NUMBER() OVER(PARTITION BY ad_url ORDER BY updated_ts DESC) AS ord
+                         FROM ads_history) x0
+                    WHERE ord = 1
+                    ) b1
+                    ON
+                    a1.ad_url = b1.ad_url
+                    
                 UNION
                 
                 SELECT

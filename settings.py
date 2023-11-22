@@ -4,7 +4,7 @@ ADS_URL_1 = 'https://imoti-sofia.imot.bg/pcgi/imot.cgi?'
 ADS_URL_2 = 'https://imot.bg/'
 ENCODING = 'windows-1251'
 # IMOT_TYPES = [1, 2, 3, 8, 9]
-IMOT_TYPES = [8, 9]
+IMOT_TYPES = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 IMOT_CITIES = ['град София']
 # IMOT_REGIONS = ['Център', 'Манастирски ливади']
 IMOT_REGIONS = ['Център']
@@ -29,6 +29,6 @@ HEADERS = {
             }
 TABLE_NAME_LATEST = 'ads_latest'
 TABLE_NAME_HISTORY = 'ads_history'
-DROP = True
+DROP = False
 OPTIMIZED_SCRAPE = True
-CLEAR_FOLDERS = True
+CLEAR_FOLDERS = False
