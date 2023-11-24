@@ -11,7 +11,7 @@ services:
     depends_on:
       - postgresdb
     ports:
-      - "5000:5000"  # Map the container's port (if needed)
+      - "5001:5001"  # Map the container's port (if needed)
   postgresdb:
     image: postgres:13
     environment:
@@ -22,6 +22,19 @@ services:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5433:5432"  # Map the PostgreSQL container's port 5432 to your local machine's port
+
+  flask_app:
+    build: ./web_app
+    depends_on:
+      - postgresdb
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./web_app:/app  # Mount your Flask app into the container
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
 
 volumes:
   postgres_data:  # Define a named volume for PostgreSQL data

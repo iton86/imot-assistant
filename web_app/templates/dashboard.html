@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Imot Recommender</title>
+    <meta name="viewport" content="width=device-width, initial-scale=0.5">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <style>
+        table {
+            width: 100px;
+            border-collapse: collapse;
+        }
+        th, td {
+            text-align: center;
+            word-wrap: break-word;
+            font-size: 14px;
+        }
+
+        /* CSS styles for the buttons */
+        button.valueButton {
+            box-shadow: none;
+        }
+
+        /* Shadow effect when button is clicked */
+        button.valueButton.clicked {
+            background-color: #2980b9;
+        }
+    </style>
+</head>
+<body>
+
+    <button onclick="showAll()">Show All</button>
+    <button onclick="clearAll()">Clear All</button>
+    {% for value in distinct_values %}
+    <button onclick="selectValue('{{ value }}')" class="valueButton">{{ value }}</button>
+    {% endfor %}
+
+
+    <table id="data-table" border="1">
+        <!-- Table headers -->
+        <thead>
+            <tr>
+                <th>URL</th>
+                <th>Gain</th>
+                <th>Type</th>
+                <th>Price</th>
+                <th>Price/kvm</th>
+                <th>kvm</th>
+                <th>Street</th>
+                <th>Locations</th>
+                <th>Last Update</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <!-- Table body -->
+        <tbody></tbody>
+    </table>
+
+    <script>
+        var selectedValues = {{ distinct_values | tojson | safe }};
+        var buttons = document.getElementsByClassName('valueButton');
+
+        function toggleClicked(button) {
+            button.classList.toggle('clicked');
+        }
+
+        function toggleUnclick(button) {
+            button.classList.remove('clicked');
+        }
+
+        function selectValue(value) {
+            var button = event.currentTarget;
+            if (button.classList.contains('valueButton')) {
+                toggleClicked(button);
+            }
+
+            if (!selectedValues.includes(value)) {
+                selectedValues.push(value);
+            } else {
+                selectedValues = selectedValues.filter(item => item !== value);
+            }
+            callFunction(selectedValues);
+        }
+
+        function showAll() {
+            var clickedButtons = document.querySelectorAll('button.valueButton.clicked');
+
+            clickedButtons.forEach(function(button) {
+                button.classList.remove('clicked');
+            });
+
+            selectedValues = {{ distinct_values | tojson | safe }};
+            callFunction(selectedValues);
+        }
+
+        function clearAll() {
+            var clickedButtons = document.querySelectorAll('button.valueButton');
+
+            clickedButtons.forEach(function(button) {
+                button.classList.toggle('clicked');
+            });
+
+            selectedValues = [];
+            callFunction(selectedValues);
+        }
+
+        function callFunction(selectedValues) {
+            $.ajax({
+                url: '/filter_by_values',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ 'selectedValues': selectedValues }),
+                success: function(response) {
+                    displayData(response.filteredData);
+                },
+                error: function(error) {
+                    console.error('Error:', error);
+                }
+            });
+        }
+
+        function displayData(data) {
+			var tableBody = $('#data-table tbody');
+			tableBody.empty();
+
+			data.forEach(function (row) {
+				var tr = $('<tr>');
+				var url = row.ad_url;  // Extracting URL from the data
+				// var alias = row.alias;  // Extracting Alias from the data
+				var pic = row.pic_url;
+
+				// var link = $('<a>').attr('href', url).attr('target', '_blank').text('click');
+				var link = $('<a>').attr('href', url).attr('target', '_blank').append($('<img>').attr('src', pic).attr('style', 'width: 100px; height: 100px; cursor: pointer;'));
+				var td1 = $('<td>').append(link);
+				var td2 = $('<td>').text(row.gain);
+				var td3 = $('<td>').text(row.ad_type);
+				var td4 = $('<td>').text(row.ad_price);
+				var td5 = $('<td>').text(row.ad_price_per_kvm);
+				var td6 = $('<td>').text(row.ad_kvm);
+				var td7 = $('<td>').text(row.ad_street);
+				var td8 = $('<td>').text(row.locations);
+				var td9 = $('<td>').text(row.updated_ts);
+
+				var removeBtn = $('<button>').addClass('remove-btn').attr('data-id', url).text('Remove');
+				var td10 = $('<td>').append(removeBtn);
+
+				tr.append(td1, td2, td3, td4, td5, td6, td7, td8, td9, td10);
+				tableBody.append(tr);
+			});
+		}
+
+
+
+        $(document).ready(function () {
+            // fetchData(); // Load data on page load
+            // console.log(distinct_values)
+            callFunction(selectedValues);
+            // Refresh data every 5 seconds
+            // setInterval(callFunction, 5000);
+
+            // Handle remove button click
+            $('#data-table').on('click', '.remove-btn', function () {
+                var idToRemove = $(this).data('id');
+                $(this).closest('tr').remove(); // Remove row from UI immediately
+                $.ajax({
+                    url: '/update_data',
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ 'id': idToRemove }),
+                    success: function (response) {
+                        console.log(response.message);
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>
