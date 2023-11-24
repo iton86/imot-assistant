@@ -32,3 +32,4 @@ TABLE_NAME_HISTORY = 'ads_history'
 DROP = False
 OPTIMIZED_SCRAPE = True
 CLEAR_FOLDERS = False
+MAX_ADS_TO_SCRAPE = 150  # set to -1 to scrape everything

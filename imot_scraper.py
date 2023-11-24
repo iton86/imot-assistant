@@ -52,6 +52,7 @@ class ImotScraper:
         self.table_name_latest = s.TABLE_NAME_LATEST
         self.table_name_history = s.TABLE_NAME_HISTORY
         self.optimized_scrape = s.OPTIMIZED_SCRAPE
+        self.max_ads_to_scrape = s.MAX_ADS_TO_SCRAPE
         self.clear_folders = s.CLEAR_FOLDERS
 
         self.imot_slinks = {}
@@ -373,12 +374,10 @@ class ImotScraper:
             logging.error(e)
             pass
 
-    def get_all_ads_info(self):
-        """
-        """
-        logging.info("Get ads content started")
 
-        # Scrape new ads and ads that are haven't be scrapped in the last 24 hours - i.e. don't scrape everything
+    def optimize_urls(self):
+
+        # Scrape new ads and ads that haven't been scrapped in the last 24 hours - i.e. don't scrape everything
         # all the time
         if self.optimized_scrape:
             engine = create_engine(self.pg_connection_string)
@@ -386,20 +385,64 @@ class ImotScraper:
             with conn.cursor() as cur:
                 # If it is first time load the history table might not exist
                 try:
-                    q_exist_ads = f"""SELECT ad_url, MAX(updated_ts) AS updated_ts 
-                                      FROM {self.table_name_history} 
-                                      GROUP BY ad_url"""
-                    exist_ads = pd.read_sql(q_exist_ads, conn)
-                    exist_ads['needs_update'] = np.where(datetime.now() - exist_ads['updated_ts'] > timedelta(hours=24), 1, 0)
-                    self.exist_ads = list(exist_ads.query("needs_update == 0")['ad_url'])
-                except:
-                    self.exist_ads = []
-            conn.commit()
-        else:
-            self.exist_ads = []
 
-        self.ad_urls_to_proc = [_ for _ in self.all_ad_urls if _ not in self.exist_ads]
+                    cur.execute("""CREATE TEMPORARY TABLE ads_latest_urls (
+                                        ad_url VARCHAR(500));""")
+                    out_urls = io.StringIO()
+
+                    # Need this to properly set the updated_ts
+                    pd.DataFrame({'ad_url': self.all_ad_urls}).to_csv(out_urls, sep='\t', header=False, index=False)
+                    out_urls.seek(0)
+                    cur.copy_from(out_urls, 'ads_latest_urls')
+                    conn.commit()
+
+                    q_exist_ads = f"""SELECT
+                                        a1.ad_url,
+                                        b1.updated_ts
+                                    FROM
+                                        ads_latest_urls a1
+                                        LEFT JOIN (
+                                         SELECT ad_url, MAX(updated_ts) AS updated_ts 
+                                         FROM {self.table_name_history} 
+                                         GROUP BY ad_url
+                                        ) b1
+                                        ON
+                                        a1.ad_url = b1.ad_url"""
+                    self.exist_ads = pd.read_sql(q_exist_ads, conn)
+                    self.exist_ads['needs_update'] = np.where(self.exist_ads['updated_ts'].isna(), 1, 0)
+                    self.exist_ads['needs_update'] = np.where(datetime.now() - self.exist_ads['updated_ts'] > timedelta(hours=24),
+                                                         2, self.exist_ads['needs_update'])
+                    self.net_new_adds = list(self.exist_ads.query("needs_update == 1")['ad_url'])
+                    self.to_refresh_adds = list(self.exist_ads.query("needs_update == 2")['ad_url'])
+                    self.optimized_ads = self.net_new_adds + self.to_refresh_adds
+                except Exception as e:
+                    logging.error(e)
+                    self.optimized_ads = []
+            conn.commit()
+            conn.close()
+        else:
+            self.optimized_ads = []
+
+        self.ad_urls_to_proc = [_ for _ in self.all_ad_urls if _ in self.optimized_ads]
+
+        if self.max_ads_to_scrape > 0:
+            self.ad_urls_to_proc = self.ad_urls_to_proc[0:self.max_ads_to_scrape]
+            logging.info(f"Optimized scraping - Only {self.max_ads_to_scrape} would be processed")
+
         logging.info(f"Adds to be scrapped: {len(self.ad_urls_to_proc)}")
+
+    def get_all_ads_info(self):
+        """
+        Loops through the collected URLs and scrapes the ad's data
+        If optimized_scrape is enabled it would scrape only the new ads or ads which
+        were not updated for more than 24 hours. Additional optimization can limit the
+        max amount of ads to be scraped in one run (i.e. it could take time before the
+        updated_ts gets more uniform distribution.)
+        """
+        logging.info("Get ads content started")
+
+        # Get the list of URLs to be processed (responsible scraping)
+        self.optimize_urls()
 
         # Re-initiate the df, so every scheduled run gets a fresh one
         self.all_ads_details = pd.DataFrame(columns=['pic_url', 'ad_url', 'ad_city', 'ad_neighborhood', 'ad_type',
@@ -456,6 +499,10 @@ class ImotScraper:
         - Load the 'new' ads back
         - Truncate the latest table and recreate it as UNION of 'new' and 'old' ads from the history table
 
+        Note: Why we need keep_ads - There is a difference between ad that needs to be scraped (to check for changes)
+        and ad to be loaded - hence we do one more check and if the hash of the latest scrape exists we don't do ner
+        and don't load the ad
+
         :param table_name_latest:
         :param table_name_history:
         :param drop:
@@ -483,12 +530,17 @@ class ImotScraper:
             cur.execute(
                 f"""
                  CREATE TEMPORARY TABLE ads_latest_urls (
-                    ad_url VARCHAR(500));
+                    ad_url VARCHAR(500),
+                    scraped BOOL);
                 """)
 
             print(f"All latest ads: {len(self.all_ad_urls)}")
             out_urls = io.StringIO()
-            pd.DataFrame({'ad_url': self.all_ad_urls}).to_csv(out_urls, sep='\t', header=False, index=False)
+
+            # Need this to properly set the updated_ts
+            latest_urls = pd.DataFrame({'ad_url': self.all_ad_urls,
+                                        'scraped': [1 if _ in self.ad_urls_to_proc else 0 for _ in self.all_ad_urls]})
+            latest_urls.to_csv(out_urls, sep='\t', header=False, index=False)
             out_urls.seek(0)
             cur.copy_from(out_urls, 'ads_latest_urls')
             conn.commit()
@@ -512,11 +564,12 @@ class ImotScraper:
             FROM ads_latest_hashes
             WHERE ad_hash NOT IN (SELECT DISTINCT ad_hash 
                                   FROM ads_history 
-                                  WHERE updated_ts > CURRENT_TIMESTAMP - INTERVAL '24 hours') 
+                                  -- WHERE updated_ts > CURRENT_TIMESTAMP - INTERVAL '24 hours'
+                                  ) 
             """
 
-            # No more than 150 ads to be updated at a run (responsible scrapping)
-            self.keep_ads = list(pd.read_sql(keep_ads_sql, conn)['ad_url'])[0:150]
+
+            self.keep_ads = list(pd.read_sql(keep_ads_sql, conn)['ad_url'])
             self.new_ads_details = self.all_ads_details.query("ad_url in @self.keep_ads")
 
             newly_added_records = self.new_ads_details.shape[0]
@@ -569,7 +622,11 @@ class ImotScraper:
                     a1.ad_street,
                     a1.updated_ts,
                     a1.locations,
-                    COALESCE(b1.ad_show, TRUE) AS ad_show -- Don't want to loose the historical selections
+                    a1.ad_show -- Let's try to see if only ads with changes would be affected
+                FROM
+                    tmp a1
+                    
+                    /*COALESCE(b1.ad_show, TRUE) AS ad_show -- Don't want to loose the historical selections
                 FROM 
                     tmp a1
                     LEFT JOIN               
@@ -579,7 +636,7 @@ class ImotScraper:
                     WHERE ord = 1
                     ) b1
                     ON
-                    a1.ad_url = b1.ad_url
+                    a1.ad_url = b1.ad_url*/
                     
                 UNION
                 
@@ -601,7 +658,7 @@ class ImotScraper:
                     a1.ad_show
                 FROM (
                       SELECT *, ROW_NUMBER() OVER(PARTITION BY ad_url ORDER BY updated_ts DESC) AS ord
-                      FROM ads_history
+                      FROM {self.table_name_history}
                       ) a1
                       INNER JOIN 
                       ads_latest_urls b1
@@ -610,9 +667,16 @@ class ImotScraper:
                 WHERE 
                     a1.ord = 1
                     AND
-                    a1.ad_hash NOT IN (SELECT ad_hash FROM tmp);
+                    a1.ad_url NOT IN (SELECT ad_url FROM tmp);
                 """
             )
+
+            # Set proper updated_ts for all processed ads, not only the ones that are net new
+            cur.execute(f"""
+            UPDATE {self.table_name_latest} 
+            SET updated_ts = CURRENT_TIMESTAMP
+            WHERE ad_url IN (SELECT ad_url FROM ads_latest_urls WHERE scraped = TRUE)
+            """)
 
             cur.execute(
                 f"""
