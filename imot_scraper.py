@@ -35,7 +35,7 @@ class ImotScraper:
 
         db_user = os.getenv('POSTGRES_USER')
         db_pass = os.getenv('POSTGRES_PASSWORD')
-        db_host = os.getenv('POSTGRES_HOST_DOCKER')  # _DOCKER for local run, _IMOT for DOCKER-COMPOSE
+        db_host = os.getenv('POSTGRES_HOST_IMOT')  # _DOCKER for local run, _IMOT for DOCKER-COMPOSE
         db_port = os.getenv('POSTGRES_PORT')
         db_database = os.getenv('POSTGRES_DB')
 
@@ -409,19 +409,22 @@ class ImotScraper:
                                         ON
                                         a1.ad_url = b1.ad_url"""
                     self.exist_ads = pd.read_sql(q_exist_ads, conn)
+
                     self.exist_ads['needs_update'] = np.where(self.exist_ads['updated_ts'].isna(), 1, 0)
-                    self.exist_ads['needs_update'] = np.where(datetime.now() - self.exist_ads['updated_ts'] > timedelta(hours=24),
-                                                         2, self.exist_ads['needs_update'])
+                    self.exist_ads['needs_update'] = np.where(datetime.now() -
+                                                              self.exist_ads['updated_ts'] > timedelta(hours=24),
+                                                              2, self.exist_ads['needs_update'])
                     self.net_new_adds = list(self.exist_ads.query("needs_update == 1")['ad_url'])
                     self.to_refresh_adds = list(self.exist_ads.query("needs_update == 2")['ad_url'])
                     self.optimized_ads = self.net_new_adds + self.to_refresh_adds
                 except Exception as e:
                     logging.error(e)
-                    self.optimized_ads = []
+                    self.optimized_ads = self.all_ad_urls[0:self.max_ads_to_scrape]
+                    pass
             conn.commit()
             conn.close()
         else:
-            self.optimized_ads = []
+            self.optimized_ads = self.all_ad_urls[0:self.max_ads_to_scrape]
 
         self.ad_urls_to_proc = [_ for _ in self.all_ad_urls if _ in self.optimized_ads]
 

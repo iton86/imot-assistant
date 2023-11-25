@@ -15,8 +15,8 @@ db_port = os.getenv('POSTGRES_PORT')
 db_database = os.getenv('POSTGRES_DB')
 
 # Configure your PostgreSQL database
-# app.config['SQLALCHEMY_DATABASE_URI'] = f'postgresql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_database}'
-app.config['SQLALCHEMY_DATABASE_URI'] = f'postgresql://postgres:admin@localhost:5432/postgres'
+app.config['SQLALCHEMY_DATABASE_URI'] = f'postgresql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_database}'
+# app.config['SQLALCHEMY_DATABASE_URI'] = f'postgresql://postgres:admin@localhost:5432/postgres'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
