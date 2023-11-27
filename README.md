@@ -102,6 +102,7 @@ It is just a function with the ETL pipeline and the scheduling modul. Set refres
 ### 5. CONFIGURATION
 The different parameters should be more or less self-explanatory and commented
 
+Poor man's JIRA: https://miro.com/app/board/uXjVNdbfZd4=/?share_link_id=535992595547
 
 ## TODO
     1. Explore serialization of the ML model, so it is not needed to install torch (which takes up to 1 GB)
