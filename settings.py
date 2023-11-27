@@ -29,7 +29,7 @@ HEADERS = {
             }
 TABLE_NAME_LATEST = 'ads_latest'
 TABLE_NAME_HISTORY = 'ads_history'
-DROP = True
+DROP = True  # Will drop TABLE_NAME_LATEST and TABLE_NAME_HISTORY
 OPTIMIZED_SCRAPE = True
-CLEAR_FOLDERS = True
+CLEAR_FOLDERS = True  # Deletes logs and jpgs folders
 MAX_ADS_TO_SCRAPE = 150  # set to -1 to scrape everything
