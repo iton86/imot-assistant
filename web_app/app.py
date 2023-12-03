@@ -78,7 +78,7 @@ def update_data():
 def filter_by_values():
     selected_values = request.json['selectedValues']
     filtered_data = YourModel.query.filter(and_(YourModel.ad_type.in_(selected_values),
-                                                YourModel.ad_show)).all()
+                                                YourModel.ad_show, YourModel.ad_price > 0)).all()
 
     group_averages = defaultdict(list)
 

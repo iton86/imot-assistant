@@ -2,11 +2,11 @@
 <html>
 <head>
     <title>Imot Recommender</title>
-    <meta name="viewport" content="width=device-width, initial-scale=0.5">
+    <meta name="viewport" content="width=device-width, initial-scale=0.35">
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
     <style>
         table {
-            width: 100px;
+            width: 50px;
             border-collapse: collapse;
         }
         th, td {
@@ -24,6 +24,12 @@
         button.valueButton.clicked {
             background-color: #2980b9;
         }
+
+        /* Additional CSS for preventing overflow in a container */
+        .container {
+        overflow-x: hidden;
+        }
+
     </style>
 </head>
 <body>
