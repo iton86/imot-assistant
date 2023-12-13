@@ -34,6 +34,7 @@ class YourModel(db.Model):
     locations = db.Column(db.String)
     updated_ts = db.Column(TIMESTAMP, nullable=False)
     ad_show = db.Column(db.Boolean, default=True)
+    liked = db.Column(db.Boolean, default=False)
 
 # Route to render the table and handle user actions
 @app.route('/')
@@ -61,7 +62,8 @@ def get_data():
                'ad_kvm': item.kvm,
                'ad_street': item.ad_street,
                'locations': item.locations,
-               'updated_ts': item.updated_ts} for item in data]
+               'updated_ts': item.updated_ts,
+               'liked': item.liked} for item in data]
 
     return jsonify(result)
 
@@ -74,6 +76,16 @@ def update_data():
     db.session.commit()
     return jsonify({'message': 'Row updated successfully'})
 
+# API endpoint to handle 'like' action and update the database
+@app.route('/update_like', methods=['POST'])
+def update_like():
+    id_to_update = request.json['id']
+    row_to_update = YourModel.query.get(id_to_update)
+    row_to_update.liked = not row_to_update.liked
+    db.session.commit()
+    return jsonify({'message': 'Row updated successfully'})
+
+# API endpoint to filter by ad type
 @app.route('/filter_by_values', methods=['POST'])
 def filter_by_values():
     selected_values = request.json['selectedValues']
@@ -105,7 +117,9 @@ def filter_by_values():
                'ad_kvm': item.ad_kvm,
                'ad_street': item.ad_street,
                'locations': item.locations,
-               'updated_ts': item.updated_ts.strftime('%Y-%m-%d %H:%M:%S')} for item in filtered_data]
+               'updated_ts': item.updated_ts.strftime('%Y-%m-%d %H:%M:%S'),
+               'liked': item.liked} for item in filtered_data]
+
 
     return jsonify({'filteredData': serialized_data})
 

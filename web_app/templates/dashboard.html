@@ -6,58 +6,76 @@
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
     <style>
         table {
-            width: 50px;
+            width: auto;
+            height: auto;
             border-collapse: collapse;
         }
-        th, td {
+        table, th, td {
             text-align: center;
             word-wrap: break-word;
             font-size: 14px;
+        }
+        #data-table td {
+            border: 2px solid darkgray; /* Adjust thickness and color as needed */
         }
 
         /* CSS styles for the buttons */
         button.valueButton {
             box-shadow: none;
+            font-size: 30px;
+            color: #333333;
         }
 
         /* Shadow effect when button is clicked */
         button.valueButton.clicked {
             background-color: #2980b9;
+            font-size: 30px;
+            color: #333333;
         }
 
         /* Additional CSS for preventing overflow in a container */
         .container {
         overflow-x: hidden;
         }
+        .no-border {
+            border: none;
+            margin-bottom: 20px;
+        }
+        .top-card-row {
+          border-radius: 8px 8px 0 0; /* Rounded corners only on the top */
+          box-shadow: 0 -4px 8px rgba(0, 0, 0, 0.2); /* Shadow on the bottom */
+          /* Other styles as needed */
+        }
 
+        /* Style for the bottom part of the card */
+        .bottom-card-row {
+          border-radius: 0 0 8px 8px; /* Rounded corners only on the bottom */
+          box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Shadow on the top */
+          /* Other styles as needed */
+        }
+        .full-width-btn {
+         width: 100%;
+         height: 100%;
+        }
+        .button-large {
+          font-size: 30px;
+          color: #333333;
+        }
     </style>
 </head>
 <body>
 
-    <button onclick="showAll()">Show All</button>
-    <button onclick="clearAll()">Clear All</button>
+    <button class="button-large" onclick="showAll()">Show All</button>
+    <button class="button-large" onclick="clearAll()">Clear All</button>
     {% for value in distinct_values %}
     <button onclick="selectValue('{{ value }}')" class="valueButton">{{ value }}</button>
     {% endfor %}
 
+    <table>
+        <tr><td colspan="2">&nbsp;</td></tr>
+    </table>
 
     <table id="data-table" border="1">
-        <!-- Table headers -->
-        <thead>
-            <tr>
-                <th>URL</th>
-                <th>Gain</th>
-                <th>Type</th>
-                <th>Price</th>
-                <th>Price/kvm</th>
-                <th>kvm</th>
-                <th>Street</th>
-                <th>Locations</th>
-                <th>Last Update</th>
-                <th>Action</th>
-            </tr>
-        </thead>
-        <!-- Table body -->
         <tbody></tbody>
     </table>
 
@@ -109,6 +127,13 @@
             callFunction(selectedValues);
         }
 
+        function getColor(value, min, max){
+            if (value > max) value = max;
+            var v = (value-min) / (max-min);
+            var hue=((1 - v)*120).toString(10);
+            return ["hsl(",hue,",100%,50%)"].join("");
+        }
+
         function callFunction(selectedValues) {
             $.ajax({
                 url: '/filter_by_values',
@@ -129,28 +154,71 @@
 			tableBody.empty();
 
 			data.forEach(function (row) {
-				var tr = $('<tr>');
+				var tr1 = $('<tr class="top-card-row">');
+				var tr3 = $('<tr>');
+				var tr4 = $('<tr>');
+				var tr5 = $('<tr>');
+				var tr2 = $('<tr class="bottom-card-row">');
+				var trEmpty = $('<tr class="no-border">');
+
 				var url = row.ad_url;  // Extracting URL from the data
-				// var alias = row.alias;  // Extracting Alias from the data
 				var pic = row.pic_url;
 
-				// var link = $('<a>').attr('href', url).attr('target', '_blank').text('click');
 				var link = $('<a>').attr('href', url).attr('target', '_blank').append($('<img>').attr('src', pic).attr('style', 'width: 100px; height: 100px; cursor: pointer;'));
-				var td1 = $('<td>').append(link);
+				var td1 = $('<td rowspan="3">').append(link);
+
 				var td2 = $('<td>').text(row.gain);
-				var td3 = $('<td>').text(row.ad_type);
-				var td4 = $('<td>').text(row.ad_price);
-				var td5 = $('<td>').text(row.ad_price_per_kvm);
-				var td6 = $('<td>').text(row.ad_kvm);
-				var td7 = $('<td>').text(row.ad_street);
-				var td8 = $('<td>').text(row.locations);
-				var td9 = $('<td>').text(row.updated_ts);
+				td2.css('background', getColor(row.gain, -100, 100));
 
-				var removeBtn = $('<button>').addClass('remove-btn').attr('data-id', url).text('Remove');
-				var td10 = $('<td>').append(removeBtn);
+				var td3 = $('<td colspan="2">').text(row.ad_type).css({'padding': '0 40px',
+                                                                        'white-space': 'nowrap'});
+				td3.css({'font-weight': 'bold', 'font-size': '20px'});
 
-				tr.append(td1, td2, td3, td4, td5, td6, td7, td8, td9, td10);
-				tableBody.append(tr);
+				var td4 = $('<td colspan="2">').text(row.ad_price.toLocaleString() + ' EUR').css({'font-weight': 'bold',
+				                                                                                  'font-size': '20px',
+				                                                                                   'padding': '0 40px'});
+				var td5 = $('<td colspan="2">').text(Math.round(row.ad_price_per_kvm).toLocaleString() + ' EUR/кв').css({'font-weight': 'bold',
+				                                                                                                         'font-size': '20px',
+				                                                                                                          'padding': '0 40px'});
+				var td6 = $('<td>').text(row.ad_kvm  + ' кв.').css({'font-weight': 'bold',
+				                                                    'font-size': '20px'});
+				var td7 = $('<td>').text(row.ad_street).css({'font-weight': 'bold',
+				                                                    'font-size': '20px'});
+
+				var td8 = $('<td colspan="1" rowspan="4">').text(row.locations);
+				td8.css({'font-size': '20px',
+				         'text-align': 'left',
+				         'padding-left': '10px'});
+
+				var td9 = $('<td colspan=4>').text('Updated: ' + row.updated_ts);
+
+				var removeBtn = $('<button>').addClass('remove-btn').addClass('full-width-btn').attr('data-id', url).text('Remove')
+				var td10 = $('<td colspan="1" rowspan="2" style="height: 80px">').append(removeBtn);
+
+                var emptyTd = $('<td colspan="10">').css({
+                                'border-left': '2px solid white',
+                                'border-right': '2px solid white',
+                                'height': '20px'
+                                });
+
+				// var LikeBtn = $('<button>').addClass('like-btn').attr('data-id', url).text('Like')
+				var LikeBtn = $('<button>').addClass('like-btn').addClass('full-width-btn').attr('data-id', url)
+
+				if (row.liked) {
+                    LikeBtn.text('Liked').css('background-color', '#2980b9');
+                } else {
+                    LikeBtn.text('Like').css('background-color', ''); // Reset background color if not liked
+                }
+
+				var td11 = $('<td colspan="1" rowspan="2" style="height: 80px">').append(LikeBtn);
+
+				tr1.append(td1, td3, td2, td8, td10);
+				tr4.append(td4, td7);
+				tr3.append(td5, td6, td11);
+				tr2.append(td9);
+				trEmpty.append(emptyTd);
+				tableBody.append(tr1, tr4, tr3, tr2);
+				tableBody.append($('<tr>').append(emptyTd));
 			});
 		}
 
@@ -158,20 +226,61 @@
 
         $(document).ready(function () {
             // fetchData(); // Load data on page load
-            // console.log(distinct_values)
-            callFunction(selectedValues);
+            // console.log(selectedValues[0])
+            // callFunction(selectedValues);
+
+            //------ Patch for T1
+            clearAll();
+            document.getElementsByTagName("button")[2].click();
+            //------ End Patch
+
             // Refresh data every 5 seconds
             // setInterval(callFunction, 5000);
 
             // Handle remove button click
             $('#data-table').on('click', '.remove-btn', function () {
                 var idToRemove = $(this).data('id');
-                $(this).closest('tr').remove(); // Remove row from UI immediately
+
+                // Select the previous two rows and remove them
+                var $currentRow = $(this).closest('tr');
+                $currentRow.next('tr').remove(); // Remove the first previous row
+                $currentRow.next('tr').remove(); // Remove the second previous row
+                $currentRow.next('tr').remove(); // Remove the second previous row
+                $currentRow.next('tr').remove(); // Remove the second previous row
+
+                // Remove row from UI immediately
+                $currentRow.remove();
+
+                // Make the AJAX call to update data
                 $.ajax({
                     url: '/update_data',
                     method: 'POST',
                     contentType: 'application/json',
                     data: JSON.stringify({ 'id': idToRemove }),
+                    success: function (response) {
+                        console.log(response.message);
+                    }
+                });
+            });
+
+            $('#data-table').on('click', '.like-btn', function () {
+
+                var idToUpdate = $(this).data('id');
+
+                if ($(this).text() === 'Like') {
+                    $(this).text('Liked'); // Change the text to 'Liked'
+                    $(this).css('background-color', '#2980b9'); // Change the background color to green (for example)
+                } else {
+                    $(this).text('Like'); // Change the text back to 'Like'
+                    $(this).css('background-color', ''); // Reset background color
+                }
+
+                // Make the AJAX call to update data
+                $.ajax({
+                    url: '/update_like',
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ 'id': idToUpdate }),
                     success: function (response) {
                         console.log(response.message);
                     }

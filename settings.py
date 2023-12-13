@@ -3,8 +3,8 @@ ADS_URL_0 = 'https://www.imot.bg/pcgi/imot.cgi?act=3&slink={}&f1={}'
 ADS_URL_1 = 'https://imoti-sofia.imot.bg/pcgi/imot.cgi?'
 ADS_URL_2 = 'https://imot.bg/'
 ENCODING = 'windows-1251'
-# IMOT_TYPES = [1, 2, 3, 8, 9]
-IMOT_TYPES = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+IMOT_TYPES = [3]
+# IMOT_TYPES = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 IMOT_CITIES = ['град София']
 # IMOT_REGIONS = ['Център', 'Манастирски ливади']
 IMOT_REGIONS = ['Център']
@@ -29,7 +29,7 @@ HEADERS = {
             }
 TABLE_NAME_LATEST = 'ads_latest'
 TABLE_NAME_HISTORY = 'ads_history'
-DROP = True  # Will drop TABLE_NAME_LATEST and TABLE_NAME_HISTORY
+DROP = False  # Will drop TABLE_NAME_LATEST and TABLE_NAME_HISTORY
 OPTIMIZED_SCRAPE = True
-CLEAR_FOLDERS = True  # Deletes logs and jpgs folders
+CLEAR_FOLDERS = False  # Deletes logs and jpgs folders
 MAX_ADS_TO_SCRAPE = 150  # set to -1 to scrape everything

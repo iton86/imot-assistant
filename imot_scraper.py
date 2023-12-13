@@ -127,6 +127,7 @@ class ImotScraper:
                     updated_ts TIMESTAMP,
                     locations VARCHAR(5000),
                     ad_show BOOL,
+                    liked BOOL,
 
                     UNIQUE (ad_url));
 
@@ -146,6 +147,7 @@ class ImotScraper:
                     updated_ts TIMESTAMP,
                     locations VARCHAR(5000),
                     ad_show BOOL,
+                    liked BOOL,
 
                     UNIQUE (ad_hash));
 
@@ -153,7 +155,9 @@ class ImotScraper:
                 RETURNS TRIGGER AS $$
                 BEGIN
                     UPDATE ads_history
-                    SET ad_show = NEW.ad_show
+                    SET 
+                        ad_show = NEW.ad_show,
+                        liked = NEW.liked
                     WHERE ads_history.ad_hash = NEW.ad_hash;
 
                     RETURN NEW;
@@ -166,7 +170,7 @@ class ImotScraper:
                         SELECT 1 FROM pg_trigger WHERE tgname = 'trigger_update_history'
                     ) THEN
                         CREATE TRIGGER trigger_update_history
-                        AFTER UPDATE OF ad_show ON ads_latest
+                        AFTER UPDATE OF ad_show, liked ON ads_latest
                         FOR EACH ROW
                         EXECUTE FUNCTION update_select_status_in_history();
                     END IF;
@@ -581,6 +585,7 @@ class ImotScraper:
             # Put this in a ImotNer method
             self.new_ads_details['locations'] = ''
             self.new_ads_details['ad_show'] = True
+            self.new_ads_details['liked'] = False
 
             res = []
             r = self.new_ads_details.shape[0]
@@ -625,7 +630,8 @@ class ImotScraper:
                     a1.ad_street,
                     a1.updated_ts,
                     a1.locations,
-                    a1.ad_show -- Let's try to see if only ads with changes would be affected
+                    a1.ad_show, -- Let's try to see if only ads with changes would be affected
+                    a1.liked 
                 FROM
                     tmp a1
                     
@@ -658,7 +664,8 @@ class ImotScraper:
                     a1.ad_street,
                     a1.updated_ts,
                     a1.locations,
-                    a1.ad_show
+                    a1.ad_show,
+                    a1.liked
                 FROM (
                       SELECT *, ROW_NUMBER() OVER(PARTITION BY ad_url ORDER BY updated_ts DESC) AS ord
                       FROM {self.table_name_history}
